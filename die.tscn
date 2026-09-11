@@ -1,0 +1,18 @@
+[gd_scene format=3 uid="uid://poh2h1f3vtga"]
+
+[ext_resource type="Script" uid="uid://gq053gdruqbj" path="res://die.gd" id="1_gxo0y"]
+[ext_resource type="PackedScene" uid="uid://cx50kf03r227n" path="res://DiceTest1.glb" id="2_muu1c"]
+
+[sub_resource type="BoxShape3D" id="BoxShape3D_l5p7c"]
+size = Vector3(2, 2, 2)
+
+[node name="Die" type="RigidBody3D" unique_id=351507778]
+gravity_scale = 2.0
+freeze = true
+script = ExtResource("1_gxo0y")
+
+[node name="DiceTest1" parent="." unique_id=630718868 instance=ExtResource("2_muu1c")]
+
+[node name="CollisionShape3D" type="CollisionShape3D" parent="." unique_id=2045726811]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 1, 0)
+shape = SubResource("BoxShape3D_l5p7c")

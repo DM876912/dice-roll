@@ -1,0 +1,43 @@
+[gd_scene format=3 uid="uid://ddj12jio2wvvk"]
+
+[ext_resource type="Script" path="res://world.gd" id="1_world"]
+
+[sub_resource type="ProceduralSkyMaterial" id="ProceduralSkyMaterial_gsf2p"]
+
+[sub_resource type="Sky" id="Sky_xnjg1"]
+sky_material = SubResource("ProceduralSkyMaterial_gsf2p")
+
+[sub_resource type="Environment" id="Environment_l5p7c"]
+background_mode = 2
+sky = SubResource("Sky_xnjg1")
+
+[node name="Node3D" type="Node3D" unique_id=839965008]
+script = ExtResource("1_world")
+
+[node name="Camera3D" type="Camera3D" parent="." unique_id=134428437]
+transform = Transform3D(1, 0, 0, 0, 0.7713821, 0.6363722, 0, -0.6363722, 0.7713821, 0, 14.618938, 16.059334)
+
+[node name="WorldEnvironment" type="WorldEnvironment" parent="." unique_id=708401784]
+environment = SubResource("Environment_l5p7c")
+
+[node name="DirectionalLight3D" type="DirectionalLight3D" parent="." unique_id=1931336360]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 11.6, 0)
+
+[node name="Floor" type="CSGBox3D" parent="." unique_id=510545530]
+use_collision = true
+size = Vector3(20, 1, 21.5)
+
+[node name="FrontWall" type="CSGBox3D" parent="." unique_id=1456414913]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 0, 6.2000003, -10.1)
+use_collision = true
+size = Vector3(17.1, 11.400001, 1)
+
+[node name="LeftWall" type="CSGBox3D" parent="." unique_id=1469185530]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, -7.6000004, 7.55, 0.19999993)
+use_collision = true
+size = Vector3(1, 13.900001, 19.2)
+
+[node name="RightWall" type="CSGBox3D" parent="." unique_id=1341678099]
+transform = Transform3D(1, 0, 0, 0, 1, 0, 0, 0, 1, 9, 6.9, 0)
+use_collision = true
+size = Vector3(1, 13.2, 21.1)
