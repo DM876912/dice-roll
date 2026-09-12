@@ -63,6 +63,25 @@ func _build_hud() -> void:
 	_target_label.add_theme_color_override("font_color", Color.WHITE)
 	target_panel.add_child(_target_label)
 
+	# --- Controls panel (bottom-left) ----------------------------------------
+	# Player-facing cheat sheet for the mouse + R bindings.
+	var controls_panel := _create_panel(Control.PRESET_BOTTOM_LEFT, Vector2(16, 16))
+	hud_layer.add_child(controls_panel)
+
+	var controls_vbox := VBoxContainer.new()
+	controls_vbox.add_theme_constant_override("separation", 2)
+	controls_panel.add_child(controls_vbox)
+	for line in [
+		"Left click pick up",
+		"Right click cancel",
+		"R to reset die",
+	]:
+		var lbl := Label.new()
+		lbl.text = line
+		lbl.add_theme_font_size_override("font_size", 16)
+		lbl.add_theme_color_override("font_color", Color(1, 1, 1, 0.75))
+		controls_vbox.add_child(lbl)
+
 	# --- Win message (centered, starts invisible) ----------------------------
 	# CenterContainer anchored to FULL_RECT keeps the label dead-centered at
 	# any window size. MOUSE_FILTER_IGNORE so clicks pass through to the scene.
@@ -98,6 +117,17 @@ func _create_panel(preset: int, margin: Vector2) -> PanelContainer:
 		panel.offset_top = margin.y
 		panel.offset_right = -margin.x
 		panel.offset_bottom = 90.0
+	elif preset == Control.PRESET_BOTTOM_LEFT:
+		# Same anchor-sharing gotcha as PRESET_TOP_RIGHT: when both horizontal
+		# anchors are 0.0, width = offset_right - offset_left and the panel
+		# collapses to zero. Set an explicit width that's comfortably wider
+		# than the widest control label ("Right click cancel" at 16pt + style
+		# margins). PanelContainer reflows within the rect, so being slightly
+		# oversized is fine; being collapsed is invisible.
+		panel.offset_left = margin.x
+		panel.offset_right = 220.0
+		panel.offset_top = -90.0
+		panel.offset_bottom = -margin.y
 
 	var style := StyleBoxFlat.new()
 	style.bg_color = Color(0, 0, 0, 0.55)

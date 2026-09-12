@@ -35,6 +35,10 @@ var _prev_grab_pos: Vector3 = Vector3.ZERO
 # spin comes from real off-center impulse physics. Y component matters:
 # a click above/below center is what gives pitch/roll (X/Z) spin, not just yaw.
 var _grab_offset: Vector3 = Vector3.ZERO
+# Where the die was sitting just before we picked it up. Restored exactly
+# (position + rotation) when the player cancels the throw with right-click —
+# so the die goes back to where it was, frozen, and no score is awarded.
+var _pre_drag_transform: Transform3D = Transform3D.IDENTITY
 
 # Set to false at the start of each toss; flipped to true after roll_finished
 # fires, so we emit exactly once per roll even though `sleeping` stays true.
@@ -52,10 +56,11 @@ func _ready():
 func _input(event):
 	if event.is_action_pressed("ui_accept"):
 		_roll()
-	elif _dragging and event is InputEventMouseButton \
-			and not event.pressed \
-			and event.button_index == MOUSE_BUTTON_LEFT:
-		_end_drag()
+	elif _dragging and event is InputEventMouseButton:
+		if not event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
+			_end_drag()
+		elif event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
+			_cancel_drag()
 
 
 # Fires only when the click actually hits the die's collision shape — use for grab.
@@ -81,6 +86,10 @@ func _process(delta):
 # --- Drag ---------------------------------------------------------------------
 
 func _start_drag(screen_pos: Vector2, hit_world_pos: Vector3):
+	# Snapshot where the die was sitting before we grabbed it — right-click
+	# cancel restores this transform so the die goes back to its rest pose
+	# (full rotation, not just position) without scoring.
+	_pre_drag_transform = global_transform
 	# Full 3D offset from die center to the actual hit point on the collision
 	# shape. Y is preserved — that's what produces pitch/roll torque later.
 	_grab_offset = hit_world_pos - global_position
@@ -106,6 +115,25 @@ func _end_drag():
 		return
 	_dragging = false
 	_toss(_drag_velocity)
+
+
+# Right-click during a drag: put the die back exactly where it was (full
+# transform, frozen), kill the drag state, and ensure no roll_finished
+# fires. `freeze = true` keeps the die locked to the rest pose and the
+# `not freeze and ... and sleeping` check in _process never matches, so
+# the score stays untouched.
+func _cancel_drag():
+	if not _dragging:
+		return
+	_dragging = false
+	_drag_velocity = Vector3.ZERO
+	linear_velocity = Vector3.ZERO
+	angular_velocity = Vector3.ZERO
+	# Keep `freeze = true` (it was true during drag) so the body stays locked.
+	# Flag the roll as already accounted for so even if the body wakes up
+	# briefly on its own, the score isn't re-counted.
+	_emitted_for_current_roll = true
+	global_transform = _pre_drag_transform
 
 
 func _update_drag(delta: float):

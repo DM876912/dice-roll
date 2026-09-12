@@ -11,6 +11,7 @@ Open the project in Godot 4.7+ (Jolt Physics, Forward+ renderer) and press **F5*
 | Action | Input |
 |---|---|
 | Grab and throw the die | Left-click + drag + release |
+| Cancel a throw after pickup (die returns to where it was, no score) | Right-click |
 | Respawn a fresh die at the start position | **R** |
 | Roll in place (debug alternate, random rotation) | **Space** |
 
