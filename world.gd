@@ -262,10 +262,14 @@ func _spawn_die_for_inventory(slot_index: int) -> RigidBody3D:
 	die.global_position = inventory_drop_positions[slot_index]
 	_arena_dice.append(die)
 	die.roll_finished.connect(_on_die_rolled)
-	# Connect the cancel callback WITH the die ref so the handler can free
-	# the right node when the player right-clicks out of the throw.
+	# Connect the cancel callback. The signal `inventory_drag_canceled(slot_index)`
+	# emits the slot index as its one argument, and we bind only the die ref —
+	# so the actual call shape is (slot_index_emitted, die_bound) = two args
+	# to the handler's two parameters. Earlier code bound both die AND
+	# slot_index (3 args to a 2-param handler), which Godot 4 mostly drops
+	# silently but is the wrong shape regardless.
 	die.inventory_drag_canceled.connect(
-		_on_inventory_drag_canceled.bind(die, slot_index)
+		_on_inventory_drag_canceled.bind(die)
 	)
 	# Slot is now considered "used" — refund happens via the cancel signal.
 	_inventory_available[slot_index] = false
