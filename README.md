@@ -29,8 +29,11 @@ die.tscn            — die prefab: RigidBody3D + GLB model + box collision
 die.gd              — die physics: drag-toss from arena OR inventory, face
                       detection via dot-product, roll_finished signal,
                       inventory_drag_canceled signal (right-click refund)
-world.gd            — HUD, inventory strip (6 slots), target/win logic,
-                      die lifecycle, R-to-refill-inventory
+world.gd            — HUD, inventory strip (6 slots), audio subsystem,
+                      target/win logic, die lifecycle, R-to-refill-inventory
+sounds/             — placeholder SFX (synthesized WAVs, swappable):
+                      select.wav (UI click), impact.wav (die contact thud),
+                      score.wav (settle chime)
 DiceTest1.glb       — die 3D model (imported)
 icon.svg            — project icon
 ```
@@ -47,6 +50,10 @@ icon.svg            — project icon
 - **Bounce:** the die has a `physics_material_override` (bounce 0.3, friction 0.5) so impacts feel alive instead of landing dead. Tune in the inspector on `die.tscn`.
 - **Score detection:** when the die settles (RigidBody3D `sleeping = true`), each face's local normal is rotated into world space via `global_transform.basis` and the one with the highest dot product to `Vector3.UP` is the top face. Each die's score is additive into the total — and re-throwing the same die produces another score (each toss arms the signal afresh).
 - **HUD:** `CanvasLayer` with a `PanelContainer` (top-left score + last roll), a target panel (top-right), a controls legend (top-left under the score), a centered `Label` for the win message, and the inventory strip (bottom-center, six numbered slot buttons). The win message tweens `modulate:a` from 0 → 1 → 0 over 4.4s when the score first crosses the target.
+- **Audio:** three non-positional `AudioStreamPlayer`s (not `AudioStreamPlayer3D` — the camera is fixed, so spatialization doesn't add anything). Streams are loaded from `res://sounds/{select,impact,score}.wav` at runtime via `load()`, so a missing wav degrades to a no-op rather than crashing. Trigger points:
+  - **select** — fires on `button_down` of any inventory slot. Sharp 1500 Hz click with a 6 ms exp decay.
+  - **impact** — connected to each die's `body_entered` signal. Die.tscn sets `contact_monitor = true` + `max_contacts_reported = 4`. Low thud (120/250/80 Hz with brown-noise overlay) with a 70 ms exp decay. Globally throttled to one sound per 70 ms (`IMPACT_COOLDOWN_MS`) so a chaotic roll doesn't drown the score chime — two dice colliding at the same instant register as one impact (single physical event).
+  - **score** — fires from `_on_die_rolled` (one chime per settled die). 880/1320/1760 Hz triad (A5 + E6 + A6) bell-like decay. Multiple dice settling in the same frame layer their chimes; the additive overlap sounds pleasing rather than clipping.
 
 ## Tech
 

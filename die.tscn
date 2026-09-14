@@ -11,6 +11,8 @@ bounce = 0.3
 friction = 0.5
 
 [node name="Die" type="RigidBody3D" unique_id=351507778]
+contact_monitor = true
+max_contacts_reported = 4
 gravity_scale = 2.0
 freeze = true
 physics_material_override = SubResource("PhysicsMaterial_bounce")

@@ -44,13 +44,56 @@ var _last_label: Label
 var _target_label: Label
 var _win_label: Label
 
+# --- Audio --------------------------------------------------------------------
+# Three SFX triggers, each with its own AudioStreamPlayer (so e.g. an impact
+# thud doesn't restart the score chime mid-ring). All non-positional because
+# the camera is fixed and the sound design doesn't need spatial cues for the
+# level of feedback we want. Streams are loaded at runtime via load() so a
+# missing wav file doesn't crash the game — the player just becomes a no-op.
+
+var _audio_select: AudioStreamPlayer
+var _audio_impact: AudioStreamPlayer
+var _audio_score: AudioStreamPlayer
+
+# Global throttle on impact sounds. Multiple dice can be in flight at once,
+# each firing body_entered on contact — without a cap, six dice rolling
+# would produce a continuous wall of thuds drowning the score chime. 70ms
+# gives a sense of rhythm ("thud-thud... thud") instead of a drone. Two dice
+# colliding at the same instant register as one impact, which is what you
+# physically heard (one contact).
+const IMPACT_COOLDOWN_MS: int = 70
+var _last_impact_time_ms: int = 0
+
 
 func _ready() -> void:
 	for i in INVENTORY_SIZE:
 		_inventory_available.append(true)
+	_build_audio()
 	_build_hud()
 	# Note: no auto-spawn — arena starts empty. Dice enter the arena only
 	# through inventory slot clicks.
+
+
+# --- Audio --------------------------------------------------------------------
+
+func _build_audio() -> void:
+	_audio_select = _make_audio_player("res://sounds/select.wav", -3.0)
+	_audio_impact = _make_audio_player("res://sounds/impact.wav", -2.0)
+	_audio_score = _make_audio_player("res://sounds/score.wav", -5.0)
+
+
+# Build a non-positional AudioStreamPlayer and load its stream. Returns the
+# player regardless of whether the load succeeded so the play_*() helpers
+# can safely no-op when a stream is missing.
+func _make_audio_player(path: String, volume_db: float) -> AudioStreamPlayer:
+	var player := AudioStreamPlayer.new()
+	add_child(player)
+	# load() at runtime so a missing .wav or stale .import doesn't break the game.
+	var resource := load(path)
+	if resource is AudioStream:
+		player.stream = resource
+	player.volume_db = volume_db
+	return player
 
 
 # --- HUD ----------------------------------------------------------------------
@@ -248,6 +291,7 @@ func _on_inventory_slot_pressed(slot_index: int) -> void:
 		return
 	if not _inventory_available[slot_index]:
 		return  # disabled, but defensive — should be unreachable
+	play_select()  # UI click feedback — fires on press, before any drag motion
 	_spawn_die_for_inventory(slot_index)
 
 
@@ -262,6 +306,13 @@ func _spawn_die_for_inventory(slot_index: int) -> RigidBody3D:
 	die.global_position = inventory_drop_positions[slot_index]
 	_arena_dice.append(die)
 	die.roll_finished.connect(_on_die_rolled)
+	# body_entered fires on each physical contact (die-floor, die-wall,
+	# die-die). Connected here so arena dice spawned from inventory picks
+	# trigger impact sounds. _on_die_impact handles the global throttle,
+	# so a single simultaneous contact between two dice produces one
+	# sound (not two overlapping — both dice fire body_entered but the
+	# global cooldown dedupes them).
+	die.body_entered.connect(_on_die_impact)
 	# Connect the cancel callback. The signal `inventory_drag_canceled(slot_index)`
 	# emits the slot index as its one argument, and we bind only the die ref —
 	# so the actual call shape is (slot_index_emitted, die_bound) = two args
@@ -320,6 +371,7 @@ func _on_die_rolled(value: int) -> void:
 	_last_roll = value
 	_total_label.text = "Score: %d" % _total_score
 	_last_label.text = "Last roll: %d" % _last_roll
+	play_score_sound()  # one chime per settled die; multiple can overlap
 
 	# Trigger the win fade once, the first time we cross the target.
 	if not _won and _total_score >= TARGET_SCORE:
@@ -335,3 +387,36 @@ func _show_win_message() -> void:
 		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_OUT)
 	tween.tween_property(_win_label, "modulate:a", 0.0, WIN_FADE_OUT) \
 		.set_trans(Tween.TRANS_SINE).set_ease(Tween.EASE_IN)
+
+
+# --- Audio triggers ---------------------------------------------------------
+
+# Sharp UI click. Called from _on_inventory_slot_pressed so the sound fires
+# on press (when the slot visually lights up), not on release. AudioStreamPlayer
+# handles re-trigger on rapid clicks by restarting the stream from frame 0,
+# which sounds right — no cooldown, instant responsiveness.
+func play_select() -> void:
+	if _audio_select and _audio_select.stream:
+		_audio_select.play()
+
+
+# Pleasant bell-like chime. Called from _on_die_rolled so it fires once
+# per settled die. With 6 dice in play, multiple chimes can layer in a
+# single frame — they overlap rather than cut each other off, which sounds
+# pleasing (chord-ish) rather than jarring.
+func play_score_sound() -> void:
+	if _audio_score and _audio_score.stream:
+		_audio_score.play()
+
+
+# Thud for a die hitting anything. Connected to each die's body_entered
+# signal in _spawn_die_for_inventory. Global cooldown (IMPACT_COOLDOWN_MS)
+# is the only dedup — multiple physical contacts within 70ms share one
+# sound. Keeps chaotic rolls musical instead of turning into drum solo.
+func _on_die_impact(_body: Node) -> void:
+	var now_ms := Time.get_ticks_msec()
+	if now_ms - _last_impact_time_ms < IMPACT_COOLDOWN_MS:
+		return
+	_last_impact_time_ms = now_ms
+	if _audio_impact and _audio_impact.stream:
+		_audio_impact.play()
