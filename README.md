@@ -34,6 +34,8 @@ icon.svg            — project icon
 ## How It Works
 
 - **Drag-toss:** the die is frozen during drag and directly moved to follow the cursor on a horizontal plane at `drag_height`. The grab offset (cursor hit point − die center) is captured in 3D and used as the torque arm on release — `apply_impulse(impulse, grab_offset)` makes Godot compute both linear and angular momentum from the offset, so click near the top of the die → pitch/roll torque, click near an edge → bigger tumble.
+- **Drop-in-place:** if the cursor barely moved between grab and release (drag-end speed < `min_release_speed`, default 50 u/s), the toss falls back to a small downward impulse (`min_release_force`, default 5 N·s) applied at the grab point. The resulting torque still tumbles the die off whatever face it was picked up on, so picking up and "dropping" without motion actually changes the roll. Fully deterministic — no randomness.
+- **Bounce:** the die has a `physics_material_override` (bounce 0.3, friction 0.5) so impacts feel alive instead of landing dead. Tune in the inspector on `die.tscn`.
 - **Score detection:** when the die settles (RigidBody3D `sleeping = true`), each face's local normal is rotated into world space via `global_transform.basis` and the one with the highest dot product to `Vector3.UP` is the top face.
 - **HUD:** `CanvasLayer` with a `PanelContainer` on each side (top-left score, top-right target) and a centered `Label` for the win message. The win message tweens `modulate:a` from 0 → 1 → 0 over 4.4s when the score first crosses the target.
 

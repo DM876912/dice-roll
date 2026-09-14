@@ -7,6 +7,16 @@ extends RigidBody3D
 # How strongly drag motion translates into toss impulse. Scales BOTH linear
 # and angular response (since angular comes from off-center impulse, not random).
 @export var toss_strength: float = 1.0
+# Below this drag-end speed (cursor units/sec), treat the release as "drop in
+# place" — apply a minimum impulse so the die still tumbles from the residual
+# pressure of a hand releasing it, instead of dropping flat onto the same face
+# it was picked up on.
+@export var min_release_speed: float = 50.0
+# Magnitude of the downward impulse used when the release is below
+# `min_release_speed`. Combined with `grab_offset` via apply_impulse, this
+# produces torque proportional to where you grabbed — a top-corner grab
+# flips the die around a horizontal axis onto a new face.
+@export var min_release_force: float = 5.0
 
 # --- Face values --------------------------------------------------------------
 # Each face of your dice model has a number. Match these to whichever face
@@ -114,7 +124,20 @@ func _end_drag():
 	if not _dragging:
 		return
 	_dragging = false
-	_toss(_drag_velocity)
+	# Two release modes:
+	# - Real drag (cursor moved): use the cursor's velocity as the impulse.
+	# - Drop-in-place (cursor barely moved): simulate the residual pressure of
+	#   a hand releasing the die with a small downward impulse at the grab
+	#   point. The torque = grab_offset × downward_force produces a tumble
+	#   proportional to where you grabbed — top-corner grabs flip the die
+	#   onto a new face instead of landing on whatever was up when picked up.
+	#   Fully deterministic; dead-center grabs drop flat (matches reality).
+	var impulse: Vector3
+	if _drag_velocity.length() >= min_release_speed:
+		impulse = _drag_velocity * toss_strength
+	else:
+		impulse = Vector3.DOWN * min_release_force
+	_toss(impulse)
 
 
 # Right-click during a drag: put the die back exactly where it was (full
@@ -199,14 +222,13 @@ func get_top_value() -> int:
 # spin emerges naturally from r × F. Click above the center → pitch/roll
 # torque. Click on a side → yaw. Click near center → mostly linear, little spin.
 # No randomness anywhere.
-func _toss(drag_velocity: Vector3):
+func _toss(impulse: Vector3):
 	freeze = false
 	# Wake the body so the new impulse actually takes effect. Without this,
 	# `sleeping` carries over from the previous settle and the next-frame
 	# settle check fires immediately, double-counting the previous score.
 	sleeping = false
 	_emitted_for_current_roll = false  # arm the signal for this new toss
-	var impulse: Vector3 = drag_velocity * toss_strength
 	apply_impulse(impulse, _grab_offset)
 
 

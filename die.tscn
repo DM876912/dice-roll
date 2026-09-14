@@ -6,9 +6,14 @@
 [sub_resource type="BoxShape3D" id="BoxShape3D_l5p7c"]
 size = Vector3(2, 2, 2)
 
+[sub_resource type="PhysicsMaterial" id="PhysicsMaterial_bounce"]
+bounce = 0.3
+friction = 0.5
+
 [node name="Die" type="RigidBody3D" unique_id=351507778]
 gravity_scale = 2.0
 freeze = true
+physics_material_override = SubResource("PhysicsMaterial_bounce")
 script = ExtResource("1_gxo0y")
 
 [node name="DiceTest1" parent="." unique_id=630718868 instance=ExtResource("2_muu1c")]
