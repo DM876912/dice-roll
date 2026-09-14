@@ -50,11 +50,20 @@ var _grab_offset: Vector3 = Vector3.ZERO
 # so the die goes back to where it was, frozen, and no score is awarded.
 var _pre_drag_transform: Transform3D = Transform3D.IDENTITY
 
+# Inventory-drag tracking: which HUD slot spawned this die. -1 means the die
+# was picked up from the arena via _input_event (the original path).
+# The world marks this on spawn; on right-click cancel during an inventory
+# drag, world refunds the slot and frees the die.
+var _inventory_slot_index: int = -1
+
 # Set to false at the start of each toss; flipped to true after roll_finished
 # fires, so we emit exactly once per roll even though `sleeping` stays true.
 var _emitted_for_current_roll: bool = false
 
 signal roll_finished(value)
+# Fired when an inventory-origin drag is canceled (right-click). The world
+# handler frees this die and refunds the slot.
+signal inventory_drag_canceled(slot_index: int)
 
 # --- Lifecycle ----------------------------------------------------------------
 
@@ -95,10 +104,45 @@ func _process(delta):
 
 # --- Drag ---------------------------------------------------------------------
 
+# Called by world.gd when the player click+drags on an inventory slot button.
+# Spawns the die under the cursor at drag_height, follows the mouse like an
+# arena drag, and releases via the normal _end_drag() path. Right-click cancel
+# refunds the slot via inventory_drag_canceled (the die is freed by world).
+#
+# Inventory throws use _grab_offset = Vector3.ZERO because there's no way to
+# "grab off-center" from a 2D slot — the cursor already spawned the die at
+# its center. Pure linear impulse on release, no torque from offset. Tumbling
+# comes from the impact with the floor when the die falls from drag_height.
+func start_inventory_drag(screen_pos: Vector2, slot_index: int) -> void:
+	_inventory_slot_index = slot_index
+	_pre_drag_transform = global_transform
+	_grab_offset = Vector3.ZERO
+
+	var mouse_world: Vector3 = _screen_to_drag_plane(screen_pos)
+	_dragging = true
+	_drag_velocity = Vector3.ZERO
+	_prev_grab_pos = mouse_world
+	linear_velocity = Vector3.ZERO
+	angular_velocity = Vector3.ZERO
+	freeze = true
+	# Arm the "don't auto-emit" flag. The die is frozen and never settles on
+	# its own during a drag, so this is mostly consistency with the post-toss
+	# invariant — but if a future refactor unfreezes mid-drag, this keeps the
+	# score safe.
+	_emitted_for_current_roll = true
+
+	# Clamp spawn into arena bounds so the die can't appear outside the walls
+	# when the cursor is over a HUD panel (which projects behind/over the walls).
+	var clamped := _clamp_to_arena(mouse_world)
+	global_position = Vector3(
+		clamped.x - _grab_offset.x,
+		drag_height,
+		clamped.z - _grab_offset.z
+	)
+
+
 func _start_drag(screen_pos: Vector2, hit_world_pos: Vector3):
-	# Snapshot where the die was sitting before we grabbed it — right-click
-	# cancel restores this transform so the die goes back to its rest pose
-	# (full rotation, not just position) without scoring.
+	_inventory_slot_index = -1  # arena origin, not inventory-spawned
 	_pre_drag_transform = global_transform
 	# Full 3D offset from die center to the actual hit point on the collision
 	# shape. Y is preserved — that's what produces pitch/roll torque later.
@@ -124,6 +168,7 @@ func _end_drag():
 	if not _dragging:
 		return
 	_dragging = false
+	_inventory_slot_index = -1  # drag is over, regardless of source
 	# Two release modes:
 	# - Real drag (cursor moved): use the cursor's velocity as the impulse.
 	# - Drop-in-place (cursor barely moved): simulate the residual pressure of
@@ -131,7 +176,9 @@ func _end_drag():
 	#   point. The torque = grab_offset × downward_force produces a tumble
 	#   proportional to where you grabbed — top-corner grabs flip the die
 	#   onto a new face instead of landing on whatever was up when picked up.
-	#   Fully deterministic; dead-center grabs drop flat (matches reality).
+	#   For inventory drags grab_offset is zero, so this is just a small
+	#   downward kick — tumbling comes from the floor impact when it falls
+	#   from drag_height. Fully deterministic; dead-center grabs drop flat.
 	var impulse: Vector3
 	if _drag_velocity.length() >= min_release_speed:
 		impulse = _drag_velocity * toss_strength
@@ -140,21 +187,32 @@ func _end_drag():
 	_toss(impulse)
 
 
-# Right-click during a drag: put the die back exactly where it was (full
-# transform, frozen), kill the drag state, and ensure no roll_finished
-# fires. `freeze = true` keeps the die locked to the rest pose and the
-# `not freeze and ... and sleeping` check in _process never matches, so
-# the score stays untouched.
+# Right-click during a drag: either restore the die (arena drag) or refund
+# the inventory slot + free the die (inventory drag). Both paths keep the
+# score untouched.
 func _cancel_drag():
 	if not _dragging:
 		return
+	var was_inventory: bool = _inventory_slot_index >= 0
+	var slot_index: int = _inventory_slot_index
+	_inventory_slot_index = -1
 	_dragging = false
 	_drag_velocity = Vector3.ZERO
 	linear_velocity = Vector3.ZERO
 	angular_velocity = Vector3.ZERO
-	# Keep `freeze = true` (it was true during drag) so the body stays locked.
-	# Flag the roll as already accounted for so even if the body wakes up
-	# briefly on its own, the score isn't re-counted.
+
+	if was_inventory:
+		# Inventory cancel: die disappears, slot refunds. The world handler
+		# (connected to inventory_drag_canceled) frees this node. We stay
+		# frozen and emission-suppressed so we can't spuriously fire
+		# roll_finished before being freed.
+		freeze = true
+		_emitted_for_current_roll = true
+		inventory_drag_canceled.emit(slot_index)
+		return
+
+	# Arena cancel: restore the die to its exact pre-drag pose, locked.
+	freeze = true
 	_emitted_for_current_roll = true
 	global_transform = _pre_drag_transform
 
@@ -187,6 +245,18 @@ func _screen_to_drag_plane(screen_pos: Vector2) -> Vector3:
 		return global_position
 	var t: float = (drag_height - origin.y) / dir.y
 	return origin + dir * t
+
+
+# Clamp an XZ point into the playable arena so an inventory drag can't dump
+# the die outside the walls (e.g., when the cursor is over a HUD panel and
+# the ray misses the play area). Bounds are loose — the 2u die can't quite
+# touch the walls even at these clamps.
+func _clamp_to_arena(p: Vector3) -> Vector3:
+	return Vector3(
+		clamp(p.x, -6.5, 7.5),
+		p.y,
+		clamp(p.z, -9.5, 10.0)
+	)
 
 # --- Score detection ----------------------------------------------------------
 
