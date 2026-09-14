@@ -11,7 +11,7 @@ config_version=5
 [application]
 
 config/name="DiceRoll"
-run/main_scene="uid://ddj12jio2wvvk"
+run/main_scene="res://main_menu.tscn"
 config/features=PackedStringArray("4.7", "Forward Plus")
 config/icon="res://icon.svg"
 
