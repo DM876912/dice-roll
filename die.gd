@@ -88,15 +88,16 @@ func _ready():
 	start_pos = global_position
 
 
-# Global input — catches release anywhere on screen while dragging.
+# Global input — catches release anywhere on screen while dragging,
+# and right-click for cancel/refund (see _on_right_click for details).
 func _input(event):
 	if event.is_action_pressed("ui_accept"):
 		_roll()
-	elif _dragging and event is InputEventMouseButton:
+	elif event is InputEventMouseButton:
 		if not event.pressed and event.button_index == MOUSE_BUTTON_LEFT:
 			_end_drag()
 		elif event.pressed and event.button_index == MOUSE_BUTTON_RIGHT:
-			_cancel_drag()
+			_on_right_click()
 
 
 # Fires only when the click actually hits the die's collision shape — use for grab.
@@ -186,14 +187,10 @@ func _end_drag():
 		return
 	var was_inventory := _inventory_slot_index >= 0
 	_dragging = false
-	_inventory_slot_index = -1  # drag is over, regardless of source
-	# Two release modes:
-	# - Real drag (cursor moved): use the cursor's velocity as the impulse.
-	# - Drop-in-place (cursor barely moved): simulate the residual pressure of
-	#   a hand releasing the die with a small downward impulse at the grab
-	#   point. The torque = grab_offset × downward_force produces a tumble
-	#   proportional to where you grabbed — top-corner grabs flip the die
-	#   onto a new face instead of landing on whatever was up when picked up.
+	# NOTE: _inventory_slot_index stays set for inventory-spawned dice so
+	# _on_right_click can refund the throw even after release (until the die
+	# actually settles and scores). It's cleared by _cancel_drag (mid-drag
+	# cancel) or by the world via queue_free when the die is removed.
 	var impulse: Vector3
 	if _drag_velocity.length() >= min_release_speed:
 		impulse = _drag_velocity * toss_strength
@@ -208,9 +205,34 @@ func _end_drag():
 		_toss(impulse)
 
 
+# Unified right-click handler. Three distinct cases, in priority order:
+# 1. Mid-drag (any source): cancel — inventory dice get freed and their
+#    slot refunds; arena dice get restored to pre-drag pose. See _cancel_drag.
+# 2. Post-release, inventory-spawned, before scoring: refund the throw —
+#    die disappears, slot becomes available again. Covers the common
+#    "I tossed too early, didn't mean it" case. Allowed until the die
+#    actually settles and `_emitted_for_current_roll` flips true; once
+#    the roll has been recorded, the score stands and right-click no-ops.
+# 3. Arena dice post-release: no inventory slot to refund, so right-click
+#    is a no-op. The score stands; pick it up and toss again if you want
+#    a different value.
+func _on_right_click() -> void:
+	if _dragging:
+		_cancel_drag()
+		return
+	if _inventory_slot_index >= 0 and not _emitted_for_current_roll:
+		# Set the "already counted" guard BEFORE emit so a settle that
+		# fires between here and the world's queue_free can't double-score.
+		# _inventory_slot_index stays set past this point (the world is
+		# about to free the node anyway), so the early-return above catches
+		# any redundant late right-click events.
+		_emitted_for_current_roll = true
+		inventory_drag_canceled.emit(_inventory_slot_index)
+
+
 # Right-click during a drag: either restore the die (arena drag) or refund
 # the inventory slot + free the die (inventory drag). Both paths keep the
-# score untouched.
+# score untouched. Called only from _on_right_click when _dragging is true.
 func _cancel_drag():
 	if not _dragging:
 		return
