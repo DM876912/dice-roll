@@ -4,7 +4,7 @@ A simple 3D dice-tossing game in Godot 4.7. Six dice start in an inventory strip
 
 ## Running
 
-Open the project in Godot 4.7+ (Jolt Physics, Forward+ renderer) and press **F5**.
+Open the project in Godot 4.7+ (Jolt Physics, Forward+ renderer) and press **F5**. The main menu loads first; press **PLAY** (or Space / Enter) to enter the game.
 
 ## Controls
 
@@ -16,15 +16,28 @@ Open the project in Godot 4.7+ (Jolt Physics, Forward+ renderer) and press **F5*
 | Refill the inventory (arena dice + score are kept) | **R** |
 | Roll in place (debug alternate, random rotation) | **Space** |
 
+### Main Menu
+
+| Action | Input |
+|---|---|
+| Start the game | **PLAY** button, **Space**, or **Enter** |
+| Quit | **QUIT** button |
+
 ## Goal
 
 Score points by rolling the dice. Reach the target (default 20) and a "You win this round!" message fades in at the center of the screen. Score keeps accumulating past the target — press **R** to refill the inventory without resetting the score or the dice already in play.
+
+## Main Menu
+
+A placeholder menu loads at startup with title, subtitle, a dashed `[ custom art slot ]` zone for art TBD, and PLAY / QUIT buttons. Space / Enter also starts the game from the menu. The whole layout is built programmatically in `main_menu.gd._ready()` — same pattern as the in-game HUD — so it's easy to iterate on while the design is in flux. When custom art arrives, swap the dashed-border placeholder for the new art node and tweak sizes in `ART_PLACEHOLDER_SIZE`.
 
 ## Project Layout
 
 ```
 project.godot       — Godot project config (main scene, physics, rendering)
-World.tscn          — main scene: 3D world (floor + walls), camera, lighting, HUD
+main_menu.tscn      — main menu scene (placeholder UI; loaded at startup)
+main_menu.gd        — menu script: builds title, art slot, PLAY/QUIT buttons
+World.tscn          — game scene: 3D world (floor + walls), camera, lighting, HUD
 die.tscn            — die prefab: RigidBody3D + GLB model + box collision
 die.gd              — die physics: drag-toss from arena OR inventory, face
                       detection via dot-product, roll_finished signal,
