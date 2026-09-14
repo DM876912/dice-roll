@@ -18,6 +18,23 @@ extends RigidBody3D
 # flips the die around a horizontal axis onto a new face.
 @export var min_release_force: float = 5.0
 
+# --- Inventory throw feel ----------------------------------------------------
+# Inventory-spawned dice have _grab_offset = Vector3.ZERO (the cursor can't
+# "grab off-axis" from a 2D slot button), so apply_impulse gives them zero
+# torque and they just slide straight down. Instead, we set linear + angular
+# velocity directly on release:
+#   - inventory_lift: upward velocity bump (units/sec) so the die pops off
+#     the drag plane and has air time to tumble.
+#   - inventory_spin_scale: multiplier from drag_speed to angular velocity
+#     (rad/sec). Spin axis is perpendicular to drag in the XZ plane — the
+#     natural end-over-end tumble axis for a horizontal throw.
+#   - inventory_spin_cap: angular velocity ceiling so accidental mouse-snap
+#     throws don't spin the die into orbit.
+@export_group("Inventory throw feel")
+@export var inventory_lift: float = 4.0
+@export var inventory_spin_scale: float = 0.3
+@export var inventory_spin_cap: float = 18.0
+
 # --- Face values --------------------------------------------------------------
 # Each face of your dice model has a number. Match these to whichever face
 # of the GLB points in that local direction. Defaults assume:
@@ -167,6 +184,7 @@ func _start_drag(screen_pos: Vector2, hit_world_pos: Vector3):
 func _end_drag():
 	if not _dragging:
 		return
+	var was_inventory := _inventory_slot_index >= 0
 	_dragging = false
 	_inventory_slot_index = -1  # drag is over, regardless of source
 	# Two release modes:
@@ -176,15 +194,18 @@ func _end_drag():
 	#   point. The torque = grab_offset × downward_force produces a tumble
 	#   proportional to where you grabbed — top-corner grabs flip the die
 	#   onto a new face instead of landing on whatever was up when picked up.
-	#   For inventory drags grab_offset is zero, so this is just a small
-	#   downward kick — tumbling comes from the floor impact when it falls
-	#   from drag_height. Fully deterministic; dead-center grabs drop flat.
 	var impulse: Vector3
 	if _drag_velocity.length() >= min_release_speed:
 		impulse = _drag_velocity * toss_strength
 	else:
 		impulse = Vector3.DOWN * min_release_force
-	_toss(impulse)
+	if was_inventory:
+		# Inventory throws use a dedicated path that synthesizes lift + tumble
+		# directly. See _toss_inventory for why a regular apply_impulse doesn't
+		# work for them (and why both feel "physical" without any randomness).
+		_toss_inventory(_drag_velocity)
+	else:
+		_toss(impulse)
 
 
 # Right-click during a drag: either restore the die (arena drag) or refund
@@ -300,6 +321,43 @@ func _toss(impulse: Vector3):
 	sleeping = false
 	_emitted_for_current_roll = false  # arm the signal for this new toss
 	apply_impulse(impulse, _grab_offset)
+
+
+# Inventory throw path. Replaces _toss for inventory-origin drags because
+# _grab_offset = Vector3.ZERO would give us a pure-linear apply_impulse (zero
+# torque) and the die would slide instead of tumble. Instead, set linear +
+# angular velocity directly:
+#   - linear: drag_velocity * toss_strength + upward lift. The lift ensures
+#     the die pops off the drag plane and has air time; without it the die
+#     never gets above drag_height.
+#   - angular: perpendicular to drag in XZ, scaled by drag speed and capped.
+#     Spin perpendicular to throw direction = end-over-end tumble, which is
+#     what makes a tossed die feel like a tossed die.
+# Drop-in-place (tiny drag): lift is still added; tumble defaults to a forward
+# flip around +X so the die pitches toward the camera and gives some visual
+# motion. Both paths are fully deterministic — no randomness anywhere.
+func _toss_inventory(drag_velocity: Vector3) -> void:
+	freeze = false
+	sleeping = false
+	_emitted_for_current_roll = false
+
+	var drag_xz := Vector3(drag_velocity.x, 0, drag_velocity.z)
+	var drag_speed := drag_xz.length()
+
+	# Linear motion: scaled drag + lift.
+	linear_velocity = drag_velocity * toss_strength + Vector3.UP * inventory_lift
+
+	# Tumble axis + spin magnitude. If there's a meaningful drag direction,
+	# spin perpendicular to it; otherwise fall back to a default forward flip.
+	var tumble_axis: Vector3
+	var spin: float
+	if drag_speed > 0.01:
+		tumble_axis = Vector3.UP.cross(drag_xz).normalized()
+		spin = clamp(drag_speed * inventory_spin_scale, 0.0, inventory_spin_cap)
+	else:
+		tumble_axis = Vector3.RIGHT
+		spin = inventory_spin_cap * 0.5  # half-cap for a gentle default
+	angular_velocity = tumble_axis * spin
 
 
 func _roll():
