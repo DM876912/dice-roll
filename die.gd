@@ -362,8 +362,22 @@ func _toss_inventory(drag_velocity: Vector3) -> void:
 		tumble_axis = Vector3.UP.cross(drag_xz).normalized()
 		spin = clamp(drag_speed * inventory_spin_scale, 0.0, inventory_spin_cap)
 	else:
-		tumble_axis = Vector3.RIGHT
-		spin = inventory_spin_cap * 0.5  # half-cap for a gentle default
+		# Drop-in-place (no drag). With no drag there's no user-input source
+		# of variation, so inject subtle randomness across axis / spin / lift
+		# so consecutive taps don't deterministically land on the same face
+		# (the prior fixed-Vector3.RIGHT + fixed-spin + fixed-lift combo
+		# always landed on 5 — same spin → same rotations in air → same
+		# landing face). Tight ranges so the throw still feels physical.
+		var axis_perturbation := Vector3(
+			randf_range(-0.3, 0.3),
+			0.0,
+			randf_range(-0.3, 0.3)
+		)
+		tumble_axis = (Vector3.RIGHT + axis_perturbation).normalized()
+		spin = randf_range(inventory_spin_cap * 0.4, inventory_spin_cap * 0.7)
+		# Small lift variance so flight time varies slightly — different
+		# rotations in air → different landing faces.
+		linear_velocity.y += randf_range(-inventory_lift * 0.15, inventory_lift * 0.15)
 	angular_velocity = tumble_axis * spin
 
 
